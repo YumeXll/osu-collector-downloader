@@ -37,15 +37,19 @@ async function handler(req, res) {
     }
 
     // Invalid request
-    res.status(400).json({
+    res.statusCode = 400;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
       error:
         "Invalid request. Provide either collectionId or (jobId + getZip=true)"
-    });
+    }));
   } catch (err) {
     console.error("Download handler error:", err);
-    res.status(500).json({
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
       error: err.message || "Internal server error"
-    });
+    }));
   }
 }
 
@@ -59,9 +63,11 @@ async function startDownload(collectionId, res) {
     const collection = await osuCollector.getCollection({ id: collectionId });
 
     if (!collection || !collection.beatmapsets) {
-      return res.status(404).json({
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
         error: `Collection ${collectionId} not found`
-      });
+      }));
     }
 
     // Create unique job ID
@@ -82,16 +88,20 @@ async function startDownload(collectionId, res) {
       jobStateManager.failJob(jobId, err.message);
     });
 
-    res.status(200).json({
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
       jobId,
       collectionName: collection.name,
       totalBeatmaps: beatmapIds.length
-    });
+    }));
   } catch (err) {
     console.error("Start download error:", err);
-    res.status(500).json({
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
       error: err.message || "Failed to fetch collection"
-    });
+    }));
   }
 }
 
@@ -168,21 +178,27 @@ async function createZipFile(jobId, zipPath) {
 
 /**
  * Retrieve ZIP file for download
- */
-async function getZipFile(jobId, res) {
-  try {
-    const jobState = jobStateManager.getJobState(jobId);
-
-    if (!jobState) {
-      return res.status(404).json({
+ */s.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
         error: `Job ${jobId} not found`
-      });
+      }));
     }
 
     if (jobState.status !== "completed") {
-      return res.status(400).json({
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
         error: `Job ${jobId} is not ready. Status: ${jobState.status}`
-      });
+      }));
+    }
+
+    if (!jobState.zipPath || !fs.existsSync(jobState.zipPath)) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
+        error: "ZIP file not found"
+      }));
     }
 
     if (!jobState.zipPath || !fs.existsSync(jobState.zipPath)) {
@@ -209,15 +225,19 @@ async function getZipFile(jobId, res) {
           orchestrator.clearJob(jobId);
         } catch (err) {
           console.error("Cleanup error:", err);
-        }
-      }, 5000);
-    });
-
-    fileStream.on("error", (err) => {
-      console.error("File stream error:", err);
-      res.status(500).json({
+        }Code = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({
         error: "Failed to download file"
-      });
+      }));
+    });
+  } catch (err) {
+    console.error("Get ZIP error:", err);
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
+      error: err.message || "Failed to retrieve ZIP"
+    }) });
     });
   } catch (err) {
     console.error("Get ZIP error:", err);

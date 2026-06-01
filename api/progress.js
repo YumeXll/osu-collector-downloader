@@ -10,31 +10,39 @@ async function handler(req, res) {
     const { jobId } = req.query;
 
     if (!jobId) {
-      return res.status(400).json({
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
         error: "Missing jobId parameter"
-      });
+      }));
     }
 
     const progress = jobStateManager.getJobState(jobId);
 
     if (!progress) {
-      return res.status(404).json({
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
         error: `Job ${jobId} not found`
-      });
+      }));
     }
 
-    res.status(200).json({
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
       jobId,
       status: progress.status,
       total: progress.total,
       downloaded: progress.downloaded,
       errors: progress.errors || []
-    });
+    }));
   } catch (err) {
     console.error("Progress handler error:", err);
-    res.status(500).json({
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({
       error: err.message || "Internal server error"
-    });
+    }));
   }
 }
 

@@ -189,7 +189,13 @@ async function createZipFile(jobId, zipPath) {
 
 /**
  * Retrieve ZIP file for download
- */s.statusCode = 404;
+ */
+async function getZipFile(jobId, res) {
+  try {
+    const jobState = jobStateManager.getJobState(jobId);
+
+    if (!jobState) {
+      res.statusCode = 404;
       res.setHeader("Content-Type", "application/json");
       return res.end(JSON.stringify({
         error: `Job ${jobId} not found`
@@ -212,12 +218,6 @@ async function createZipFile(jobId, zipPath) {
       }));
     }
 
-    if (!jobState.zipPath || !fs.existsSync(jobState.zipPath)) {
-      return res.status(500).json({
-        error: "ZIP file not found"
-      });
-    }
-
     // Send ZIP file
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", "attachment; filename=osu-beatmaps.zip");
@@ -225,7 +225,7 @@ async function createZipFile(jobId, zipPath) {
     const fileStream = fs.createReadStream(jobState.zipPath);
     fileStream.pipe(res);
 
-    // Clean up after download (after a delay to ensure file is fully sent)
+    // Clean up after download
     fileStream.on("end", () => {
       setTimeout(() => {
         try {
@@ -236,7 +236,13 @@ async function createZipFile(jobId, zipPath) {
           orchestrator.clearJob(jobId);
         } catch (err) {
           console.error("Cleanup error:", err);
-        }Code = 500;
+        }
+      }, 1000);
+    });
+
+    fileStream.on("error", (err) => {
+      console.error("File stream error:", err);
+      res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({
         error: "Failed to download file"
@@ -248,13 +254,7 @@ async function createZipFile(jobId, zipPath) {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
       error: err.message || "Failed to retrieve ZIP"
-    }) });
-    });
-  } catch (err) {
-    console.error("Get ZIP error:", err);
-    res.status(500).json({
-      error: err.message || "Failed to retrieve ZIP"
-    });
+    }));
   }
 }
 

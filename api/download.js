@@ -16,11 +16,7 @@ if (!fs.existsSync(tmpDir)) {
 }
 
 /**
- * Main download endpoint
- * Query params:
- *   - collectionId: ID of the collection to download (for starting new download)
- *   - jobId: Job ID (for retrieving ZIP)
- *   - getZip: Set to 'true' to get ZIP file instead of starting download
+ * Main download endpoint handler
  */
 async function handler(req, res) {
   console.log("Download endpoint called:", { method: req.method, query: req.query });
@@ -42,21 +38,22 @@ async function handler(req, res) {
 
     // Invalid request
     console.log("Invalid request - missing parameters");
-    res.statusCode = 400;
     res.setHeader("Content-Type", "application/json");
+    res.statusCode = 400;
     return res.end(JSON.stringify({
-      error:
-        "Invalid request. Provide either collectionId or (jobId + getZip=true)"
+      error: "Invalid request. Provide either collectionId or (jobId + getZip=true)"
     }));
   } catch (err) {
     console.error("Download handler error:", err);
-    res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
+    res.statusCode = 500;
     res.end(JSON.stringify({
       error: err.message || "Internal server error"
     }));
   }
 }
+
+module.exports = handler;
 
 /**
  * Start a new download job
@@ -74,8 +71,8 @@ async function startDownload(collectionId, res) {
 
     if (!collection || !collection.beatmapsets) {
       console.log("Collection not found or invalid");
-      res.statusCode = 404;
       res.setHeader("Content-Type", "application/json");
+      res.statusCode = 404;
       return res.end(JSON.stringify({
         error: `Collection ${collectionId} not found`
       }));
@@ -103,8 +100,8 @@ async function startDownload(collectionId, res) {
     });
 
     console.log("Sending response with jobId:", jobId);
-    res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
+    res.statusCode = 200;
     const responseData = {
       jobId,
       collectionName: collection.name,
@@ -115,8 +112,8 @@ async function startDownload(collectionId, res) {
     console.log("Response sent successfully");
   } catch (err) {
     console.error("Start download error:", err);
-    res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
+    res.statusCode = 500;
     res.end(JSON.stringify({
       error: err.message || "Failed to fetch collection"
     }));
@@ -202,24 +199,24 @@ async function getZipFile(jobId, res) {
     const jobState = jobStateManager.getJobState(jobId);
 
     if (!jobState) {
-      res.statusCode = 404;
       res.setHeader("Content-Type", "application/json");
+      res.statusCode = 404;
       return res.end(JSON.stringify({
         error: `Job ${jobId} not found`
       }));
     }
 
     if (jobState.status !== "completed") {
-      res.statusCode = 400;
       res.setHeader("Content-Type", "application/json");
+      res.statusCode = 400;
       return res.end(JSON.stringify({
         error: `Job ${jobId} is not ready. Status: ${jobState.status}`
       }));
     }
 
     if (!jobState.zipPath || !fs.existsSync(jobState.zipPath)) {
-      res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
+      res.statusCode = 500;
       return res.end(JSON.stringify({
         error: "ZIP file not found"
       }));
@@ -249,16 +246,16 @@ async function getZipFile(jobId, res) {
 
     fileStream.on("error", (err) => {
       console.error("File stream error:", err);
-      res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
+      res.statusCode = 500;
       res.end(JSON.stringify({
         error: "Failed to download file"
       }));
     });
   } catch (err) {
     console.error("Get ZIP error:", err);
-    res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
+    res.statusCode = 500;
     res.end(JSON.stringify({
       error: err.message || "Failed to retrieve ZIP"
     }));

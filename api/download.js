@@ -1,0 +1,230 @@
+const { OsuCollectorNode } = require("osu-collector-node");
+const archiver = require("archiver");
+const fs = require("fs");
+const path = require("path");
+const DownloadOrchestrator = require("./downloadOrchestrator");
+const jobStateManager = require("./jobStateManager");
+
+// Global orchestrator instance
+const orchestrator = new DownloadOrchestrator();
+
+// Temporary storage directories
+const tmpDir = "/tmp/osu-downloads";
+const stateDir = "/tmp/osu-job-states";
+if (!fs.existsSync(tmpDir)) {
+  fs.mkdirSync(tmpDir, { recursive: true });
+}
+
+/**
+ * Main download endpoint
+ * Query params:
+ *   - collectionId: ID of the collection to download (for starting new download)
+ *   - jobId: Job ID (for retrieving ZIP)
+ *   - getZip: Set to 'true' to get ZIP file instead of starting download
+ */
+async function handler(req, res) {
+  try {
+    const { collectionId, jobId, getZip } = req.query;
+
+    // Mode 1: Start new download
+    if (collectionId && !getZip) {
+      return await startDownload(collectionId, res);
+    }
+
+    // Mode 2: Get ZIP file
+    if (jobId && getZip === "true") {
+      return await getZipFile(jobId, res);
+    }
+
+    // Invalid request
+    res.status(400).json({
+      error:
+        "Invalid request. Provide either collectionId or (jobId + getZip=true)"
+    });
+  } catch (err) {
+    console.error("Download handler error:", err);
+    res.status(500).json({
+      error: err.message || "Internal server error"
+    });
+  }
+}
+
+/**
+ * Start a new download job
+ */
+async function startDownload(collectionId, res) {
+  try {
+    // Fetch collection from osu!Collector
+    const osuCollector = new OsuCollectorNode();
+    const collection = await osuCollector.getCollection({ id: collectionId });
+
+    if (!collection || !collection.beatmapsets) {
+      return res.status(404).json({
+        error: `Collection ${collectionId} not found`
+      });
+    }
+
+    // Create unique job ID
+    const jobId = `job_${collectionId}_${Date.now()}`;
+
+    // Extract beatmap IDs
+    const beatmapIds = collection.beatmapsets.map((bs) => bs.id);
+
+    // Initialize job state
+    jobStateManager.initializeJobState(jobId, beatmapIds.length);
+
+    // Create job in orchestrator
+    orchestrator.createJob(jobId, beatmapIds);
+
+    // Start async download (don't await, let it run in background)
+    downloadAllBeatmaps(jobId).catch((err) => {
+      console.error(`Download failed for job ${jobId}:`, err);
+      jobStateManager.failJob(jobId, err.message);
+    });
+
+    res.status(200).json({
+      jobId,
+      collectionName: collection.name,
+      totalBeatmaps: beatmapIds.length
+    });
+  } catch (err) {
+    console.error("Start download error:", err);
+    res.status(500).json({
+      error: err.message || "Failed to fetch collection"
+    });
+  }
+}
+
+/**
+ * Download all beatmaps for a job and create ZIP
+ */
+async function downloadAllBeatmaps(jobId) {
+  const job = orchestrator.jobs.get(jobId);
+  if (!job) {
+    throw new Error(`Job ${jobId} not found`);
+  }
+
+  try {
+    // Download all beatmaps
+    await orchestrator.downloadAllBeatmaps(jobId);
+
+    // Update state with progress
+    const errors = job.errors.map((e) => ({
+      beatmapId: e.beatmapId,
+      error: e.error
+    }));
+    jobStateManager.updateJobProgress(jobId, job.downloaded, errors);
+
+    // Create ZIP file
+    const zipPath = path.join(tmpDir, `${jobId}.zip`);
+    await createZipFile(jobId, zipPath);
+
+    // Mark job as completed
+    jobStateManager.completeJob(jobId, zipPath);
+  } catch (err) {
+    jobStateManager.failJob(jobId, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Create ZIP file from beatmaps
+ */
+async function createZipFile(jobId, zipPath) {
+  return new Promise((resolve, reject) => {
+    const job = orchestrator.jobs.get(jobId);
+    if (!job) {
+      return reject(new Error(`Job ${jobId} not found`));
+    }
+
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver("zip", {
+      zlib: { level: 6 } // Compression level
+    });
+
+    output.on("close", () => {
+      console.log(`ZIP created: ${zipPath} (${archive.pointer()} bytes)`);
+      resolve();
+    });
+
+    archive.on("error", (err) => {
+      console.error("ZIP creation error:", err);
+      reject(err);
+    });
+
+    archive.pipe(output);
+
+    // Add each beatmap to ZIP
+    let fileIndex = 0;
+    for (const [beatmapId, beatmapData] of job.beatmaps) {
+      const fileName = `${fileIndex}_${beatmapId}_${beatmapData.mirror}.osz`;
+      archive.append(beatmapData.data, { name: fileName });
+      fileIndex++;
+    }
+
+    archive.finalize();
+  });
+}
+
+/**
+ * Retrieve ZIP file for download
+ */
+async function getZipFile(jobId, res) {
+  try {
+    const jobState = jobStateManager.getJobState(jobId);
+
+    if (!jobState) {
+      return res.status(404).json({
+        error: `Job ${jobId} not found`
+      });
+    }
+
+    if (jobState.status !== "completed") {
+      return res.status(400).json({
+        error: `Job ${jobId} is not ready. Status: ${jobState.status}`
+      });
+    }
+
+    if (!jobState.zipPath || !fs.existsSync(jobState.zipPath)) {
+      return res.status(500).json({
+        error: "ZIP file not found"
+      });
+    }
+
+    // Send ZIP file
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=osu-beatmaps.zip");
+
+    const fileStream = fs.createReadStream(jobState.zipPath);
+    fileStream.pipe(res);
+
+    // Clean up after download (after a delay to ensure file is fully sent)
+    fileStream.on("end", () => {
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(jobState.zipPath)) {
+            fs.unlinkSync(jobState.zipPath);
+          }
+          jobStateManager.deleteJobState(jobId);
+          orchestrator.clearJob(jobId);
+        } catch (err) {
+          console.error("Cleanup error:", err);
+        }
+      }, 5000);
+    });
+
+    fileStream.on("error", (err) => {
+      console.error("File stream error:", err);
+      res.status(500).json({
+        error: "Failed to download file"
+      });
+    });
+  } catch (err) {
+    console.error("Get ZIP error:", err);
+    res.status(500).json({
+      error: err.message || "Failed to retrieve ZIP"
+    });
+  }
+}
+
+module.exports = handler;

@@ -13,5 +13,9 @@ module.exports = {
     2: {
         name: "nerinyan",
         url: "https://api.nerinyan.moe/d/"
+    },
+    3: {
+        name: "sayobot",
+        url: "https://osu.sayobot.cn/d/"
     }
 }

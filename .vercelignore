@@ -1,0 +1,6 @@
+# Vercel ignore file
+src/
+deploy/
+build_step2.log
+2026-05-14T10_40_26_003Z-debug.log
+webpack.config.js

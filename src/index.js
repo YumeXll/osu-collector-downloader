@@ -1,59 +1,71 @@
 const { QMainWindow, QIcon, QSystemTrayIcon } = require("@nodegui/nodegui");
 const Path = require("path");
-const RootView = require("./components/RootView");
 
-const win = new QMainWindow();
-win.setWindowTitle("osu!collector downloader");
-win.setFixedSize(400, 200);
+try {
+  const RootView = require("./components/RootView");
 
-const tray = new QSystemTrayIcon();
+  const win = new QMainWindow();
+  win.setWindowTitle("osu!collector downloader");
+  win.setFixedSize(400, 200);
+  
+  // Ensure window is visible and centered
+  win.move(100, 100);
+  win.raise();
+  win.activateWindow();
 
-const icon = new QIcon(
-  Path.join(__dirname, "./assets/logo.png")
-);
+  const tray = new QSystemTrayIcon();
 
-win.setWindowIcon(icon);
-tray.setIcon(icon);
-tray.show();
+  const icon = new QIcon(
+    Path.join(__dirname, "./assets/logo.png")
+  );
 
-global.tray = tray; // prevents garbage collection of tray
+  win.setWindowIcon(icon);
+  tray.setIcon(icon);
+  tray.show();
 
-// Set up the root view
-const rootView = new RootView();
-win.setCentralWidget(rootView.getWidget());
+  global.tray = tray; // prevents garbage collection of tray
 
-// Apply the stylesheet to the root view
-const styleSheet = `
-  #rootView {
-    padding: 10px;
-  }
+  // Set up the root view
+  const rootView = new RootView();
+  win.setCentralWidget(rootView.getWidget());
 
-  #downloadStatus {
-    margin-top: 10px;
-    width: 100%;
-    color: #427cff;
-  }
+  // Apply the stylesheet to the root view
+  const styleSheet = `
+    #rootView {
+      padding: 10px;
+    }
 
-  #directorySelectorLabel {
-    color: #333333;
-  }
+    #downloadStatus {
+      margin-top: 10px;
+      width: 100%;
+      color: #427cff;
+    }
 
-  #downloadButton, #browseButton {
-    background-color: #4CAF50;
-    color: white;
-    padding: 5px 15px;
-    border-radius: 3px;
-  }
+    #directorySelectorLabel {
+      color: #333333;
+    }
 
-  #fieldset {
-    padding: 10px;
-    border: 2px solid #bdbdbd;
-  }
-`;
+    #downloadButton, #browseButton {
+      background-color: #4CAF50;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 3px;
+    }
 
-rootView.getWidget().setObjectName("rootView");
-rootView.getWidget().setStyleSheet(styleSheet);
+    #fieldset {
+      padding: 10px;
+      border: 2px solid #bdbdbd;
+    }
+  `;
 
-win.show();
+  rootView.getWidget().setObjectName("rootView");
+  rootView.getWidget().setStyleSheet(styleSheet);
 
-global.win = win;
+  win.show();
+
+  global.win = win;
+} catch (err) {
+  console.error("Fatal error starting application:", err);
+  console.error(err.stack);
+  process.exit(1);
+}

@@ -86,12 +86,15 @@ async function startDownload(collectionId, res) {
 
     // Extract beatmap IDs
     const beatmapIds = collection.beatmapsets.map((bs) => bs.id);
+    console.log("Job ID created:", jobId, "with", beatmapIds.length, "beatmaps");
 
     // Initialize job state
     jobStateManager.initializeJobState(jobId, beatmapIds.length);
+    console.log("Job state initialized");
 
     // Create job in orchestrator
     orchestrator.createJob(jobId, beatmapIds);
+    console.log("Job created in orchestrator");
 
     // Start async download (don't await, let it run in background)
     downloadAllBeatmaps(jobId).catch((err) => {
@@ -99,13 +102,17 @@ async function startDownload(collectionId, res) {
       jobStateManager.failJob(jobId, err.message);
     });
 
+    console.log("Sending response with jobId:", jobId);
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({
+    const responseData = {
       jobId,
       collectionName: collection.name,
       totalBeatmaps: beatmapIds.length
-    }));
+    };
+    console.log("Response data:", responseData);
+    res.end(JSON.stringify(responseData));
+    console.log("Response sent successfully");
   } catch (err) {
     console.error("Start download error:", err);
     res.statusCode = 500;

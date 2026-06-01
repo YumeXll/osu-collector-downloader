@@ -23,23 +23,28 @@ if (!fs.existsSync(tmpDir)) {
  *   - getZip: Set to 'true' to get ZIP file instead of starting download
  */
 async function handler(req, res) {
+  console.log("Download endpoint called:", { method: req.method, query: req.query });
+  
   try {
     const { collectionId, jobId, getZip } = req.query;
 
     // Mode 1: Start new download
     if (collectionId && !getZip) {
+      console.log("Starting download for collection:", collectionId);
       return await startDownload(collectionId, res);
     }
 
     // Mode 2: Get ZIP file
     if (jobId && getZip === "true") {
+      console.log("Retrieving ZIP for job:", jobId);
       return await getZipFile(jobId, res);
     }
 
     // Invalid request
+    console.log("Invalid request - missing parameters");
     res.statusCode = 400;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({
+    return res.end(JSON.stringify({
       error:
         "Invalid request. Provide either collectionId or (jobId + getZip=true)"
     }));
@@ -58,11 +63,17 @@ async function handler(req, res) {
  */
 async function startDownload(collectionId, res) {
   try {
+    console.log("startDownload called for collection:", collectionId);
+    
     // Fetch collection from osu!Collector
     const osuCollector = new OsuCollectorNode();
+    console.log("OsuCollectorNode created");
+    
     const collection = await osuCollector.getCollection({ id: collectionId });
+    console.log("Collection fetched:", collection?.name, "beatmaps:", collection?.beatmapsets?.length);
 
     if (!collection || !collection.beatmapsets) {
+      console.log("Collection not found or invalid");
       res.statusCode = 404;
       res.setHeader("Content-Type", "application/json");
       return res.end(JSON.stringify({
